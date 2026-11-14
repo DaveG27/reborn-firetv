@@ -221,6 +221,23 @@ public class MainActivity extends Activity {
      * Opens the native player. Ignores repeats while the player is open
      * (the web player retries and tries backup links when it gets no data).
      */
+    void openPlayer(String stream) {
+        runOnUiThread(() -> {
+            playerOpen = true;
+            lastStream = stream;
+            lastStreamAt = System.currentTimeMillis();
+            Toast.makeText(this, "Opening player…", Toast.LENGTH_SHORT).show();
+            try {
+                Intent i = new Intent(this, PlayerActivity.class);
+                i.putExtra(PlayerActivity.EXTRA_URL, stream);
+                startActivity(i);
+            } catch (Exception e) {
+                playerOpen = false;
+                Toast.makeText(this, "Player failed to open: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     private void handleStream(String stream) {
         runOnUiThread(() -> {
             long now = System.currentTimeMillis();
@@ -258,6 +275,12 @@ public class MainActivity extends Activity {
         public void play(String url) {
             String stream = StreamDetector.find(url);
             if (stream != null) activity.handleStream(stream);
+        }
+
+        /** Called by Reborn itself with the exact stream link: always open it. */
+        @JavascriptInterface
+        public void playDirect(String url) {
+            if (url != null && !url.isEmpty()) activity.openPlayer(url);
         }
 
         @JavascriptInterface
