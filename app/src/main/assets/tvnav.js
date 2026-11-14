@@ -37,18 +37,64 @@
     return true;
   }
 
+  // Favourite / star buttons: never the main focus target (Menu button toggles them instead).
+  function isFav(el) {
+    var s = ((el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className) || '') + ' ' +
+            (el.id || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '');
+    if (/fav|star|heart/i.test(s)) return true;
+    var t = (el.textContent || '').trim();
+    return t.length <= 2 && /[★☆♥♡⭐]/.test(t);
+  }
+
+  function nearViewport(r) {
+    var h = window.innerHeight, w = window.innerWidth;
+    return r.bottom > -h && r.top < h * 2 && r.right > -w && r.left < w * 2;
+  }
+
+  // Anything the web app made clickable via JS shows a pointer cursor – treat those as targets too.
+  function pointerTargets() {
+    var out = [];
+    var els = document.querySelectorAll('div,li,span,img,article,section,tr,td,p,figure,label');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4 || !nearViewport(r)) continue;
+      if (window.getComputedStyle(el).cursor !== 'pointer') continue;
+      // cursor is inherited: only keep the element where pointer *starts*
+      var p = el.parentElement;
+      if (p && window.getComputedStyle(p).cursor === 'pointer') continue;
+      out.push(el);
+    }
+    return out;
+  }
+
   function candidates() {
-    var list = Array.prototype.slice.call(document.querySelectorAll(SELECTOR));
-    // Prefer the outermost clickable element (avoid focusing an icon inside a button).
+    var list = Array.prototype.slice.call(document.querySelectorAll(SELECTOR)).concat(pointerTargets());
+    list = list.filter(function (el, i) { return list.indexOf(el) === i && !isFav(el) && visible(el); });
+    // Prefer the outermost clickable element (a whole channel row, not an icon inside it).
     return list.filter(function (el) {
-      if (!visible(el)) return false;
       var p = el.parentElement;
       while (p && p !== document.body) {
-        if (list.indexOf(p) !== -1 && visible(p) && p.tagName !== 'VIDEO') return false;
+        if (list.indexOf(p) !== -1 && p.tagName !== 'VIDEO') {
+          var pr = p.getBoundingClientRect();
+          // ...unless the "parent" is a huge container like the whole list or page
+          if (pr.height < window.innerHeight * 0.6 || pr.width < window.innerWidth * 0.6) return false;
+        }
         p = p.parentElement;
       }
       return true;
     });
+  }
+
+  // Full pointer/mouse/click sequence so it works whatever event the app listens for.
+  function press(el) {
+    var r = el.getBoundingClientRect();
+    var o = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+    try { el.dispatchEvent(new PointerEvent('pointerdown', o)); } catch (e) {}
+    el.dispatchEvent(new MouseEvent('mousedown', o));
+    try { el.dispatchEvent(new PointerEvent('pointerup', o)); } catch (e) {}
+    el.dispatchEvent(new MouseEvent('mouseup', o));
+    el.click();
   }
 
   function setFocus(el) {
@@ -128,7 +174,7 @@
         current.paused ? current.play() : current.pause();
         e.preventDefault();
       } else if (!isTyping(current) && current.tagName !== 'SELECT') {
-        current.click();
+        press(current);
         e.preventDefault();
       }
     }
@@ -153,6 +199,19 @@
     if (action === 'ff') v.currentTime += 30;
     if (action === 'rw') v.currentTime = Math.max(0, v.currentTime - 30);
     return true;
+  };
+
+  // Called from the Android side for the Menu (☰) button: toggle favourite on the focused row.
+  window.__rebornFav = function () {
+    if (!current) return false;
+    var scope = current;
+    for (var depth = 0; scope && depth < 4; depth++, scope = scope.parentElement) {
+      var all = scope.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        if (isFav(all[i]) && visible(all[i])) { press(all[i]); return true; }
+      }
+    }
+    return false;
   };
 
   // Called from the Android side for the Back button. Returns true if handled here.

@@ -240,6 +240,10 @@ public class MainActivity extends Activity {
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: media = "ff"; break;
                 case KeyEvent.KEYCODE_MEDIA_REWIND:     media = "rw"; break;
             }
+            if (event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
+                web.evaluateJavascript("window.__rebornFav && window.__rebornFav()", null);
+                return true;
+            }
             if (media != null) {
                 web.evaluateJavascript("window.__rebornMedia && window.__rebornMedia('" + media + "')", null);
                 return true;
