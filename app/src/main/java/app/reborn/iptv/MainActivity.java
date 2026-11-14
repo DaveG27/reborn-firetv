@@ -227,6 +227,7 @@ public class MainActivity extends Activity {
 
     void openPlayer(String stream, String channelsJson, int index) {
         runOnUiThread(() -> {
+            stopPreview();
             playerOpen = true;
             lastStream = stream;
             lastStreamAt = System.currentTimeMillis();
@@ -247,6 +248,7 @@ public class MainActivity extends Activity {
 
     private void handleStream(String stream) {
         runOnUiThread(() -> {
+            stopPreview();
             long now = System.currentTimeMillis();
             if (playerOpen) return;
             if (stream.equals(lastStream) && now - lastStreamAt < 5000) return;
@@ -273,6 +275,91 @@ public class MainActivity extends Activity {
         return h;
     }
 
+    // ---------- Live preview window ----------
+
+    private androidx.media3.exoplayer.ExoPlayer previewPlayer;
+    private androidx.media3.ui.PlayerView previewView;
+    private String previewUrl;
+    private boolean previewTriedTs;
+
+    void showPreview(String url, float x, float y, float w, float h) {
+        if (url == null || url.isEmpty() || isFinishing() || playerOpen) return;
+        float d = getResources().getDisplayMetrics().density;
+        int[] loc = new int[2];
+        web.getLocationInWindow(loc);
+        int[] rootLoc = new int[2];
+        root.getLocationInWindow(rootLoc);
+        if (previewView == null) {
+            previewView = new androidx.media3.ui.PlayerView(this);
+            previewView.setUseController(false);
+            previewView.setShutterBackgroundColor(Color.TRANSPARENT);
+            previewView.setBackgroundColor(Color.TRANSPARENT);
+            previewView.setFocusable(false);
+            root.addView(previewView, new FrameLayout.LayoutParams(1, 1));
+        }
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(Math.round(w * d), Math.round(h * d));
+        lp.leftMargin = Math.round(x * d) + loc[0] - rootLoc[0];
+        lp.topMargin = Math.round(y * d) + loc[1] - rootLoc[1];
+        previewView.setLayoutParams(lp);
+        previewView.setVisibility(View.VISIBLE);
+
+        if (url.equals(previewUrl) && previewPlayer != null) return;
+        releasePreviewPlayer();
+        previewUrl = url;
+        previewTriedTs = false;
+        startPreview(url);
+    }
+
+    private void startPreview(String url) {
+        previewPlayer = new androidx.media3.exoplayer.ExoPlayer.Builder(this)
+                .setMediaSourceFactory(new androidx.media3.exoplayer.source.DefaultMediaSourceFactory(this)
+                        .setDataSourceFactory(new androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                                .setAllowCrossProtocolRedirects(true)
+                                .setConnectTimeoutMs(10000)
+                                .setReadTimeoutMs(15000)))
+                .build();
+        previewView.setPlayer(previewPlayer);
+        androidx.media3.common.MediaItem.Builder item =
+                new androidx.media3.common.MediaItem.Builder().setUri(url);
+        if (url.contains(".m3u8")) item.setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8);
+        previewPlayer.setMediaItem(item.build());
+        previewPlayer.addListener(new androidx.media3.common.Player.Listener() {
+            @Override
+            public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                // Try the .ts version once, otherwise just leave the logo showing
+                if (!previewTriedTs && url.contains("/live/") && url.contains(".m3u8")) {
+                    previewTriedTs = true;
+                    String ts = url.replace(".m3u8", ".ts");
+                    root.post(() -> {
+                        releasePreviewPlayer();
+                        if (previewView != null) startPreview(ts);
+                    });
+                } else {
+                    root.post(() -> {
+                        releasePreviewPlayer();
+                        if (previewView != null) previewView.setVisibility(View.GONE);
+                    });
+                }
+            }
+        });
+        previewPlayer.setPlayWhenReady(true);
+        previewPlayer.prepare();
+    }
+
+    private void releasePreviewPlayer() {
+        if (previewPlayer != null) {
+            previewPlayer.release();
+            previewPlayer = null;
+        }
+        if (previewView != null) previewView.setPlayer(null);
+    }
+
+    void stopPreview() {
+        releasePreviewPlayer();
+        previewUrl = null;
+        if (previewView != null) previewView.setVisibility(View.GONE);
+    }
+
     /** JavaScript can call RebornNative.play(url) to open the native player. */
     public static class NativeBridge {
         private final MainActivity activity;
@@ -294,6 +381,17 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void playChannels(String url, String channelsJson, int index) {
             if (url != null && !url.isEmpty()) activity.openPlayer(url, channelsJson, index);
+        }
+
+        /** Small live preview at a spot on the page (CSS pixels from the top-left of the page). */
+        @JavascriptInterface
+        public void preview(String url, float x, float y, float w, float h) {
+            activity.runOnUiThread(() -> activity.showPreview(url, x, y, w, h));
+        }
+
+        @JavascriptInterface
+        public void previewStop() {
+            activity.runOnUiThread(activity::stopPreview);
         }
 
         @JavascriptInterface
@@ -411,6 +509,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        stopPreview();
         web.onPause();   // stops audio when you press Home
     }
 
@@ -424,11 +523,13 @@ public class MainActivity extends Activity {
             web.evaluateJavascript("window.__rebornBack && window.__rebornBack()", null);
         }
         web.onResume();
+        web.evaluateJavascript("window.__rebornPreviewRefresh && window.__rebornPreviewRefresh()", null);
         hideSystemUi();
     }
 
     @Override
     protected void onDestroy() {
+        stopPreview();
         if (web != null) {
             web.stopLoading();
             web.destroy();
