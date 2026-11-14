@@ -255,7 +255,29 @@
 
   // Give the first item focus once the page has drawn.
   setTimeout(function () { if (!current) move('down'); }, 600);
+  // Buttons the web app marks with data-tv-autofocus (e.g. Play on a film or series page)
+  // get the focus as soon as they appear.
+  var autoSeen = typeof WeakSet !== 'undefined' ? new WeakSet() : null;
+  function checkAutofocus() {
+    var els = document.querySelectorAll('[data-tv-autofocus]');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (autoSeen && autoSeen.has(el)) continue;
+      if (!visible(el)) continue;
+      if (autoSeen) autoSeen.add(el);
+      setFocus(el);
+      return true;
+    }
+    return false;
+  }
+
+  var pending = null;
   new MutationObserver(function () {
-    if (!current || !document.contains(current)) { current = null; setTimeout(function () { if (!current) move('down'); }, 300); }
+    if (pending) return;
+    pending = setTimeout(function () {
+      pending = null;
+      if (checkAutofocus()) return;
+      if (!current || !document.contains(current) || !visible(current)) { current = null; move('down'); }
+    }, 150);
   }).observe(document.documentElement, { childList: true, subtree: true });
 })();
