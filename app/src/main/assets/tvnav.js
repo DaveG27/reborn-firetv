@@ -10,6 +10,36 @@
   if (window.__rebornTV) return;
   window.__rebornTV = true;
 
+  // ---- Hand video streams to the native player ----
+  // Reborn plays with hls.js (XHR) or <video src>. Report those URLs to the app;
+  // the app decides if it's a stream and opens the native player.
+  if (window.RebornNative) {
+    var report = function (u) {
+      try { if (u && /^https?:/i.test(String(u))) window.RebornNative.play(String(u)); } catch (e) {}
+    };
+    var xo = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (m, u) { report(u); return xo.apply(this, arguments); };
+    if (window.fetch) {
+      var fo = window.fetch;
+      window.fetch = function (input) {
+        report(typeof input === 'string' ? input : (input && input.url));
+        return fo.apply(this, arguments);
+      };
+    }
+    var d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    if (d && d.set) {
+      Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+        configurable: true, enumerable: d.enumerable, get: d.get,
+        set: function (v) { report(v); return d.set.call(this, v); }
+      });
+    }
+    var sa = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (n, v) {
+      if (n === 'src' && (this.tagName === 'VIDEO' || this.tagName === 'SOURCE' || this.tagName === 'AUDIO')) report(v);
+      return sa.apply(this, arguments);
+    };
+  }
+
   var SELECTOR = [
     'a[href]', 'button', 'input', 'select', 'textarea', 'video',
     '[role="button"]', '[role="link"]', '[role="tab"]', '[role="option"]',

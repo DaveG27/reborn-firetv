@@ -81,6 +81,15 @@ public class PlayerActivity extends Activity {
                     player.prepare();
                     return;
                 }
+                // Live channel failed as .m3u8: many providers only serve .ts – try that once.
+                String alt = fallbackUrl(url);
+                if (alt != null) {
+                    url = alt;
+                    retries = 0;
+                    player.release();
+                    start();
+                    return;
+                }
                 Toast.makeText(PlayerActivity.this,
                         "Can't play this stream (" + error.getErrorCodeName() + ")",
                         Toast.LENGTH_LONG).show();
@@ -96,6 +105,15 @@ public class PlayerActivity extends Activity {
 
         player.setPlayWhenReady(true);
         player.prepare();
+    }
+
+    /** Next format to try after a stream fails, or null when there's nothing left. */
+    private static String fallbackUrl(String u) {
+        if (u.contains("/live/") && u.contains(".m3u8")) return u.replace(".m3u8", ".ts");
+        if ((u.contains("/movie/") || u.contains("/series/")) && u.matches(".*\\.m3u8(\\?.*)?$")) {
+            return u.replaceAll("\\.m3u8", ".mp4");
+        }
+        return null;
     }
 
     @Override

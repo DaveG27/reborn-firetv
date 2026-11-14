@@ -30,6 +30,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import android.content.Intent;
+import android.webkit.JavascriptInterface;
+import android.webkit.ServiceWorkerClient;
+import android.webkit.ServiceWorkerController;
 import android.webkit.WebResourceResponse;
 
 import java.io.ByteArrayInputStream;
@@ -129,6 +132,32 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Reborn registers a service worker; on Android, requests from a page it controls
+        // skip the WebViewClient above and come through here instead.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient() {
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebResourceRequest req) {
+                    String stream = StreamDetector.find(req.getUrl().toString());
+                    if (stream != null) {
+                        handleStream(stream);
+                        return new WebResourceResponse("text/plain", "utf-8", 204, "No Content",
+                                corsHeaders(), new ByteArrayInputStream(new byte[0]));
+                    }
+                    return null;
+                }
+            });
+        }
+
+        // Backup route: the injected script reports streams the web player starts.
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void play(String url) {
+                String stream = StreamDetector.find(url);
+                if (stream != null) handleStream(stream);
+            }
+        }, "RebornNative");
+
         web.setWebChromeClient(new WebChromeClient() {
             // Lets the web player go properly full-screen.
             @Override
@@ -192,12 +221,18 @@ public class MainActivity extends Activity {
 
     private String lastStream = null;
     private long lastStreamAt = 0;
+    private volatile boolean playerOpen = false;
 
-    /** Opens the native player, ignoring repeat requests for the same stream (web players retry). */
+    /**
+     * Opens the native player. Ignores repeats while the player is open
+     * (the web player retries and tries backup links when it gets no data).
+     */
     private void handleStream(String stream) {
         runOnUiThread(() -> {
             long now = System.currentTimeMillis();
+            if (playerOpen) return;
             if (stream.equals(lastStream) && now - lastStreamAt < 5000) return;
+            playerOpen = true;
             lastStream = stream;
             lastStreamAt = now;
             // Stop the web player so audio doesn't double up.
@@ -333,6 +368,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (playerOpen) {
+            // Back from the native player: close Reborn's own player screen too.
+            playerOpen = false;
+            lastStreamAt = System.currentTimeMillis();
+            web.evaluateJavascript("window.__rebornBack && window.__rebornBack()", null);
+        }
         web.onResume();
         hideSystemUi();
     }
