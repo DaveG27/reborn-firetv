@@ -10,6 +10,10 @@ import android.graphics.Color;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.Toast;
+import android.content.SharedPreferences;
+import java.util.Locale;
+import androidx.media3.common.TrackSelectionParameters;
 
 import androidx.media3.datasource.HttpDataSource;
 
@@ -49,6 +53,7 @@ public class PlayerActivity extends Activity {
         view.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
         view.setControllerShowTimeoutMs(3000);
         view.setControllerAutoShow(false);
+        view.setShowSubtitleButton(true);
         setContentView(view);
         hideSystemUi();
         start();
@@ -68,6 +73,7 @@ public class PlayerActivity extends Activity {
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(http))
                 .build();
         player.setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT);
+        applySubtitles(subsOn());
         view.setPlayer(player);
 
         MediaItem.Builder item = new MediaItem.Builder().setUri(Uri.parse(url));
@@ -99,6 +105,13 @@ public class PlayerActivity extends Activity {
                 showError(error);
             }
 
+            // Remember if subtitles were switched on/off with the on-screen CC button.
+            @Override
+            public void onTrackSelectionParametersChanged(TrackSelectionParameters p) {
+                boolean on = !p.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT);
+                if (on != subsOn()) prefs().edit().putBoolean("subs_on", on).apply();
+            }
+
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 if (isPlaying) scheduleHide();
@@ -125,6 +138,37 @@ public class PlayerActivity extends Activity {
     private void scheduleHide() {
         hideHandler.removeCallbacks(hideRunnable);
         hideHandler.postDelayed(hideRunnable, 3500);
+    }
+
+    // ---------- Subtitles ----------
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences("player", MODE_PRIVATE);
+    }
+
+    private boolean subsOn() {
+        return prefs().getBoolean("subs_on", false);
+    }
+
+    private void applySubtitles(boolean on) {
+        String lang = Locale.getDefault().getLanguage();
+        player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
+                .setPreferredTextLanguages(lang, "en")
+                .setSelectUndeterminedTextLanguage(true)
+                .setIgnoredTextSelectionFlags(0)
+                .build());
+    }
+
+    private void toggleSubtitles() {
+        if (!player.getCurrentTracks().containsType(C.TRACK_TYPE_TEXT)) {
+            Toast.makeText(this, "No subtitles available for this", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        boolean on = !subsOn();
+        prefs().edit().putBoolean("subs_on", on).apply();
+        applySubtitles(on);
+        Toast.makeText(this, on ? "Subtitles on" : "Subtitles off", Toast.LENGTH_SHORT).show();
     }
 
     /** Stays on screen with the exact reason so it can be read from the sofa. Back closes it. */
@@ -171,6 +215,10 @@ public class PlayerActivity extends Activity {
         if (event.getAction() == KeyEvent.ACTION_DOWN && player != null) {
             scheduleHide();
             switch (event.getKeyCode()) {
+                case KeyEvent.KEYCODE_MENU:
+                case KeyEvent.KEYCODE_CAPTIONS:
+                    toggleSubtitles();
+                    return true;
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
                     if (!view.isControllerFullyVisible()) {

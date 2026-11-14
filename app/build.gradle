@@ -10,8 +10,8 @@ android {
         applicationId 'app.reborn.iptv'
         minSdk 22          // Fire OS 5+ (all Fire TV sticks still in use)
         targetSdk 34
-        versionCode 9
-        versionName '1.8'
+        versionCode 10
+        versionName '1.9'
 
         // Change this if the web app ever moves.
         buildConfigField 'String', 'START_URL', '"https://reborn-iptv.vercel.app/"'
