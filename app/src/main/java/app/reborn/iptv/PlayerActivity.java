@@ -8,7 +8,6 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
@@ -74,7 +73,7 @@ public class PlayerActivity extends Activity {
 
         player.addListener(new Player.Listener() {
             @Override
-            public void onPlayerError(@NonNull PlaybackException error) {
+            public void onPlayerError(PlaybackException error) {
                 // Live streams drop now and then – retry a few times before giving up.
                 if (retries < 3) {
                     retries++;
