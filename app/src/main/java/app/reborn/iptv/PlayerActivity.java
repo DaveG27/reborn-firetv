@@ -35,6 +35,13 @@ import androidx.media3.ui.PlayerView;
 public class PlayerActivity extends Activity {
 
     public static final String EXTRA_URL = "url";
+    public static final String EXTRA_LIST = "channels";   // JSON [{name,url},...] for channel up/down
+    public static final String EXTRA_INDEX = "index";
+
+    private org.json.JSONArray channels;
+    private int chIndex = -1;
+    private TextView banner;
+    private View errorView;
 
     private ExoPlayer player;
     private PlayerView view;
@@ -47,6 +54,13 @@ public class PlayerActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         url = getIntent().getStringExtra(EXTRA_URL);
         if (url == null) { finish(); return; }
+        try {
+            String list = getIntent().getStringExtra(EXTRA_LIST);
+            if (list != null) channels = new org.json.JSONArray(list);
+            chIndex = getIntent().getIntExtra(EXTRA_INDEX, -1);
+        } catch (Exception e) {
+            channels = null;
+        }
 
         view = new PlayerView(this);
         view.setKeepScreenOn(true);
@@ -55,8 +69,23 @@ public class PlayerActivity extends Activity {
         view.setControllerAutoShow(false);
         view.setShowSubtitleButton(true);
         setContentView(view);
+
+        // Channel number + name banner (top-left), shown briefly after switching
+        banner = new TextView(this);
+        banner.setTextColor(Color.WHITE);
+        banner.setTextSize(22);
+        banner.setPadding(28, 16, 28, 16);
+        banner.setBackgroundColor(Color.parseColor("#CC111316"));
+        banner.setVisibility(View.GONE);
+        android.widget.FrameLayout.LayoutParams bp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.START);
+        bp.setMargins(48, 40, 0, 0);
+        ((ViewGroup) view.getParent()).addView(banner, bp);
+
         hideSystemUi();
         start();
+        if (channels != null && chIndex >= 0) showBanner();
     }
 
     private void start() {
@@ -196,9 +225,46 @@ public class PlayerActivity extends Activity {
         t.setTextSize(24);
         t.setGravity(Gravity.CENTER);
         t.setBackgroundColor(Color.parseColor("#E6000000"));
+        if (errorView != null) ((ViewGroup) errorView.getParent()).removeView(errorView);
+        errorView = t;
+        if (channels != null) t.setText(t.getText() + "\n\nUp/Down to change channel");
         ((ViewGroup) view.getParent()).addView(t, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (player != null) player.stop();
+    }
+
+    // ---------- Channel up/down ----------
+
+    private final Runnable hideBanner = () -> banner.setVisibility(View.GONE);
+
+    private void showBanner() {
+        try {
+            org.json.JSONObject ch = channels.getJSONObject(chIndex);
+            banner.setText(ch.optInt("num", chIndex + 1) + "   " + ch.optString("name", ""));
+            banner.setVisibility(View.VISIBLE);
+            hideHandler.removeCallbacks(hideBanner);
+            hideHandler.postDelayed(hideBanner, 3000);
+        } catch (Exception ignored) { }
+    }
+
+    private boolean zap(int step) {
+        if (channels == null || channels.length() < 2 || chIndex < 0) return false;
+        int n = channels.length();
+        chIndex = ((chIndex + step) % n + n) % n;
+        try {
+            url = channels.getJSONObject(chIndex).getString("url");
+        } catch (Exception e) {
+            return false;
+        }
+        if (errorView != null) {
+            ((ViewGroup) errorView.getParent()).removeView(errorView);
+            errorView = null;
+        }
+        retries = 0;
+        if (player != null) player.release();
+        start();
+        showBanner();
+        return true;
     }
 
     /** Next format to try after a stream fails, or null when there's nothing left. */
@@ -215,6 +281,21 @@ public class PlayerActivity extends Activity {
         if (event.getAction() == KeyEvent.ACTION_DOWN && player != null) {
             scheduleHide();
             switch (event.getKeyCode()) {
+                case KeyEvent.KEYCODE_CHANNEL_UP:
+                case KeyEvent.KEYCODE_PAGE_UP:
+                    if (zap(+1)) return true;
+                    break;
+                case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                case KeyEvent.KEYCODE_PAGE_DOWN:
+                    if (zap(-1)) return true;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    // Up = channel above in the list, like moving up the channel list
+                    if ((errorView != null || !view.isControllerFullyVisible()) && zap(-1)) return true;
+                    break;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    if ((errorView != null || !view.isControllerFullyVisible()) && zap(+1)) return true;
+                    break;
                 case KeyEvent.KEYCODE_MENU:
                 case KeyEvent.KEYCODE_CAPTIONS:
                     toggleSubtitles();
@@ -267,6 +348,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         hideHandler.removeCallbacks(hideRunnable);
+        hideHandler.removeCallbacks(hideBanner);
         if (player != null) {
             player.release();
             player = null;

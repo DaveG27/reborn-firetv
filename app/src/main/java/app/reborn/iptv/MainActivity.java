@@ -222,14 +222,21 @@ public class MainActivity extends Activity {
      * (the web player retries and tries backup links when it gets no data).
      */
     void openPlayer(String stream) {
+        openPlayer(stream, null, -1);
+    }
+
+    void openPlayer(String stream, String channelsJson, int index) {
         runOnUiThread(() -> {
             playerOpen = true;
             lastStream = stream;
             lastStreamAt = System.currentTimeMillis();
-            Toast.makeText(this, "Opening player…", Toast.LENGTH_SHORT).show();
             try {
                 Intent i = new Intent(this, PlayerActivity.class);
                 i.putExtra(PlayerActivity.EXTRA_URL, stream);
+                if (channelsJson != null) {
+                    i.putExtra(PlayerActivity.EXTRA_LIST, channelsJson);
+                    i.putExtra(PlayerActivity.EXTRA_INDEX, index);
+                }
                 startActivity(i);
             } catch (Exception e) {
                 playerOpen = false;
@@ -281,6 +288,12 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void playDirect(String url) {
             if (url != null && !url.isEmpty()) activity.openPlayer(url);
+        }
+
+        /** Live TV: the stream plus the channel list it came from, for channel up/down. */
+        @JavascriptInterface
+        public void playChannels(String url, String channelsJson, int index) {
+            if (url != null && !url.isEmpty()) activity.openPlayer(url, channelsJson, index);
         }
 
         @JavascriptInterface
