@@ -48,6 +48,7 @@ public class PlayerActivity extends Activity {
         view.setKeepScreenOn(true);
         view.setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS);
         view.setControllerShowTimeoutMs(3000);
+        view.setControllerAutoShow(false);
         setContentView(view);
         hideSystemUi();
         start();
@@ -99,6 +100,12 @@ public class PlayerActivity extends Activity {
             }
 
             @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                if (isPlaying) scheduleHide();
+                else view.showController();
+            }
+
+            @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) retries = 0;
                 if (state == Player.STATE_ENDED) finish();
@@ -107,6 +114,17 @@ public class PlayerActivity extends Activity {
 
         player.setPlayWhenReady(true);
         player.prepare();
+    }
+
+    private final android.os.Handler hideHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable hideRunnable = () -> {
+        if (player != null && player.isPlaying() && view != null) view.hideController();
+    };
+
+    /** Hide the on-screen controls a few seconds after the last button press while playing. */
+    private void scheduleHide() {
+        hideHandler.removeCallbacks(hideRunnable);
+        hideHandler.postDelayed(hideRunnable, 3500);
     }
 
     /** Stays on screen with the exact reason so it can be read from the sofa. Back closes it. */
@@ -151,6 +169,7 @@ public class PlayerActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN && player != null) {
+            scheduleHide();
             switch (event.getKeyCode()) {
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
@@ -199,6 +218,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        hideHandler.removeCallbacks(hideRunnable);
         if (player != null) {
             player.release();
             player = null;
