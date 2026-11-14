@@ -150,13 +150,7 @@ public class MainActivity extends Activity {
         }
 
         // Backup route: the injected script reports streams the web player starts.
-        web.addJavascriptInterface(new Object() {
-            @JavascriptInterface
-            public void play(String url) {
-                String stream = StreamDetector.find(url);
-                if (stream != null) handleStream(stream);
-            }
-        }, "RebornNative");
+        web.addJavascriptInterface(new NativeBridge(this), "RebornNative");
 
         web.setWebChromeClient(new WebChromeClient() {
             // Lets the web player go properly full-screen.
@@ -253,6 +247,21 @@ public class MainActivity extends Activity {
         Map<String, String> h = new HashMap<>();
         h.put("Access-Control-Allow-Origin", "*");
         return h;
+    }
+
+    /** JavaScript can call RebornNative.play(url) to open the native player. */
+    public static class NativeBridge {
+        private final MainActivity activity;
+        NativeBridge(MainActivity a) { activity = a; }
+
+        @JavascriptInterface
+        public void play(String url) {
+            String stream = StreamDetector.find(url);
+            if (stream != null) activity.handleStream(stream);
+        }
+
+        @JavascriptInterface
+        public String version() { return BuildConfig.VERSION_NAME; }
     }
 
     private void injectNav() {
