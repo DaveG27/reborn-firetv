@@ -208,9 +208,9 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
         } else {
-            // Fresh start: clear the web cache so the latest Reborn always loads.
-            // Logins, favourites and settings are kept (they're stored separately).
-            web.clearCache(true);
+            // No cache clearing: Vercel marks the page "check for updates every time",
+            // so a new Reborn version still loads straight away, while unchanged files
+            // are reused (saves data on Vercel's allowance).
             loadHome();
         }
     }
