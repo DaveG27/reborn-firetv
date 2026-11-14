@@ -29,8 +29,14 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import android.content.Intent;
+import android.webkit.WebResourceResponse;
+
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Reborn IPTV for Fire TV.
@@ -96,6 +102,19 @@ public class MainActivity extends Activity {
                     offlineView.setVisibility(View.GONE);
                     injectNav();
                 }
+            }
+
+            // Catch video streams the web player tries to load and play them natively instead.
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                String stream = StreamDetector.find(req.getUrl().toString());
+                if (stream != null) {
+                    handleStream(stream);
+                    // Give the web player an empty answer so it stops trying.
+                    return new WebResourceResponse("text/plain", "utf-8", 204, "No Content",
+                            corsHeaders(), new ByteArrayInputStream(new byte[0]));
+                }
+                return null;
             }
 
             @Override
@@ -169,6 +188,32 @@ public class MainActivity extends Activity {
         web.setVisibility(View.VISIBLE);
         web.loadUrl(BuildConfig.START_URL);
         web.requestFocus();
+    }
+
+    private String lastStream = null;
+    private long lastStreamAt = 0;
+
+    /** Opens the native player, ignoring repeat requests for the same stream (web players retry). */
+    private void handleStream(String stream) {
+        runOnUiThread(() -> {
+            long now = System.currentTimeMillis();
+            if (stream.equals(lastStream) && now - lastStreamAt < 5000) return;
+            lastStream = stream;
+            lastStreamAt = now;
+            // Stop the web player so audio doesn't double up.
+            web.evaluateJavascript(
+                    "document.querySelectorAll('video,audio').forEach(function(v){try{v.pause();v.removeAttribute('src');v.load();}catch(e){}})",
+                    null);
+            Intent i = new Intent(this, PlayerActivity.class);
+            i.putExtra(PlayerActivity.EXTRA_URL, stream);
+            startActivity(i);
+        });
+    }
+
+    private static Map<String, String> corsHeaders() {
+        Map<String, String> h = new HashMap<>();
+        h.put("Access-Control-Allow-Origin", "*");
+        return h;
     }
 
     private void injectNav() {
