@@ -6,7 +6,12 @@ import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Toast;
+import android.graphics.Color;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+import androidx.media3.datasource.HttpDataSource;
 
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
@@ -90,10 +95,7 @@ public class PlayerActivity extends Activity {
                     start();
                     return;
                 }
-                Toast.makeText(PlayerActivity.this,
-                        "Can't play this stream (" + error.getErrorCodeName() + ")",
-                        Toast.LENGTH_LONG).show();
-                finish();
+                showError(error);
             }
 
             @Override
@@ -105,6 +107,36 @@ public class PlayerActivity extends Activity {
 
         player.setPlayWhenReady(true);
         player.prepare();
+    }
+
+    /** Stays on screen with the exact reason so it can be read from the sofa. Back closes it. */
+    private void showError(PlaybackException error) {
+        String detail = error.getErrorCodeName();
+        Throwable c = error.getCause();
+        while (c != null) {
+            if (c instanceof HttpDataSource.InvalidResponseCodeException) {
+                int code = ((HttpDataSource.InvalidResponseCodeException) c).responseCode;
+                detail = "Provider refused the stream (HTTP " + code + ")";
+                break;
+            }
+            if (c instanceof HttpDataSource.HttpDataSourceException && c.getCause() != null) {
+                detail = "Network: " + c.getCause().getClass().getSimpleName() + " " + c.getCause().getMessage();
+            }
+            c = c.getCause();
+        }
+        String host = Uri.parse(url).getHost();
+        String type = url.contains(".m3u8") ? "m3u8" : url.contains(".ts") ? "ts" : "file";
+
+        TextView t = new TextView(this);
+        t.setText("Couldn't play this stream\n\n" + detail + "\n\nServer: " + host + "   Type: " + type
+                + "\n\nPress Back to return");
+        t.setTextColor(Color.WHITE);
+        t.setTextSize(24);
+        t.setGravity(Gravity.CENTER);
+        t.setBackgroundColor(Color.parseColor("#E6000000"));
+        ((ViewGroup) view.getParent()).addView(t, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (player != null) player.stop();
     }
 
     /** Next format to try after a stream fails, or null when there's nothing left. */

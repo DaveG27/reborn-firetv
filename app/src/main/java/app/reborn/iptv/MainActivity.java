@@ -241,7 +241,11 @@ public class MainActivity extends Activity {
                     null);
             Intent i = new Intent(this, PlayerActivity.class);
             i.putExtra(PlayerActivity.EXTRA_URL, stream);
-            startActivity(i);
+            Toast.makeText(this, "Opening player…", Toast.LENGTH_SHORT).show();
+            try { startActivity(i); } catch (Exception e) {
+                playerOpen = false;
+                Toast.makeText(this, "Player failed to open: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
         });
     }
 
