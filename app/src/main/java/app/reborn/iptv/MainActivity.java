@@ -48,6 +48,9 @@ import java.util.Map;
  */
 public class MainActivity extends Activity {
 
+    /** Reborn's own address; its /api/proxy calls are answered on the box instead of on Vercel. */
+    private static final String APP_HOST = android.net.Uri.parse(BuildConfig.START_URL).getHost();
+
     private FrameLayout root;
     private WebView web;
     private FrameLayout fullscreenHolder;
@@ -110,6 +113,8 @@ public class MainActivity extends Activity {
             // Catch video streams the web player tries to load and play them natively instead.
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                WebResourceResponse direct = ProviderProxy.handle(req, APP_HOST);
+                if (direct != null) return direct;
                 String stream = StreamDetector.find(req.getUrl().toString());
                 if (stream != null) {
                     handleStream(stream);
@@ -138,6 +143,8 @@ public class MainActivity extends Activity {
             ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient() {
                 @Override
                 public WebResourceResponse shouldInterceptRequest(WebResourceRequest req) {
+                    WebResourceResponse direct = ProviderProxy.handle(req, APP_HOST);
+                    if (direct != null) return direct;
                     String stream = StreamDetector.find(req.getUrl().toString());
                     if (stream != null) {
                         handleStream(stream);
