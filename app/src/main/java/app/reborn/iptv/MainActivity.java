@@ -201,6 +201,9 @@ public class MainActivity extends Activity {
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
         } else {
+            // Fresh start: clear the web cache so the latest Reborn always loads.
+            // Logins, favourites and settings are kept (they're stored separately).
+            web.clearCache(true);
             loadHome();
         }
     }
