@@ -213,6 +213,30 @@ public class MainActivity extends Activity {
             // are reused (saves data on Vercel's allowance).
             loadHome();
         }
+        handleOrbitIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleOrbitIntent(intent);
+    }
+
+    /**
+     * The Orbit launcher can open a live channel straight in the player:
+     * extras "orbit.play_url", plus optional "orbit.channels" (JSON [{name,url,num}])
+     * and "orbit.index" so channel up/down moves through the Orbit favourites.
+     */
+    private void handleOrbitIntent(Intent intent) {
+        if (intent == null) return;
+        String url = intent.getStringExtra("orbit.play_url");
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        String list = intent.getStringExtra("orbit.channels");
+        int index = intent.getIntExtra("orbit.index", -1);
+        intent.removeExtra("orbit.play_url"); // don't replay it on rotation / restore
+        playerOpen = false;
+        openPlayer(url, list, index);
     }
 
     private void loadHome() {
